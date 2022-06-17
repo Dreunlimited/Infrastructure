@@ -1,4 +1,4 @@
-# Catino Instrasturcture
+# Catino Infrasturcture
 
 This project build the infrastructure for Catino in AWS
 
