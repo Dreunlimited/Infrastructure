@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-import 'source-map-support/register';
-import * as cdk from 'aws-cdk-lib';
-import { CatinoInfraStack } from '../lib/catino-infra-stack';
+import "source-map-support/register";
+import * as cdk from "aws-cdk-lib";
+import { CatinoInfraStack } from "../lib/catino-infra-stack";
 
 const app = new cdk.App();
-new CatinoInfraStack(app, 'CatinoInfraStack', {
+new CatinoInfraStack(app, "CatinoInfraStack", {
+  env: {
+    account: "467725377159",
+    region: "us-east-1",
+  },
+  terminationProtection: false,
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */

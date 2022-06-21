@@ -8,6 +8,8 @@ import { Construct } from "constructs";
 import { CommonEnvironmentProps } from "./common-props";
 import { MariaDbDatabase } from "./mariadb-database-construct";
 import { FargateApplication } from "./fargate-application-construct";
+import { aws_elasticloadbalancingv2 } from "aws-cdk-lib";
+import { posix } from "path";
 
 interface ServiceConstructProps extends CommonEnvironmentProps {
   serviceName: string;
@@ -17,6 +19,8 @@ interface ServiceConstructProps extends CommonEnvironmentProps {
   numberOfInstances: number;
   dbBackupRetentionInDays: number;
   dbDeleteProtection: boolean;
+  sslCertificatateArn: string;
+  healthCheck?: aws_elasticloadbalancingv2.HealthCheck;
 }
 
 export default class MariaDbBackedFargateService extends Construct {
@@ -45,6 +49,8 @@ export default class MariaDbBackedFargateService extends Construct {
       publicFacing: props.publicFacing,
       domain: props.domain,
       desiredCount: props.numberOfInstances,
+      certificateArn: props.sslCertificatateArn,
+      healthCheck: props.healthCheck,
     });
 
     console.log("**** DB Details ****");

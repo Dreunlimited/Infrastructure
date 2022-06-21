@@ -17,27 +17,62 @@ export class VpcConstruct extends Construct {
 
     this.vpc = new aws_ec2.Vpc(this, `${props.environmentName}Vpc`, {
       vpcName: `${props.environmentName}Vpc`,
-      availabilityZones: props.availabilityZones,
+      maxAzs: 3,
       enableDnsHostnames: true,
       enableDnsSupport: true,
       natGateways: props.natGateways,
       subnetConfiguration: [
         {
-          cidrMask: 24,
+          cidrMask: 26,
           name: `${props.environmentName}-Public`,
           subnetType: SubnetType.PUBLIC,
         },
         {
-          cidrMask: 24,
+          cidrMask: 25,
           name: `${props.environmentName}-Private`,
           subnetType: SubnetType.PRIVATE_WITH_NAT,
         },
         {
-          cidrMask: 28,
+          cidrMask: 26,
           name: `${props.environmentName}-Isolated`,
           subnetType: SubnetType.PRIVATE_ISOLATED,
         },
       ],
     });
+
+    //   props.availabilityZones.forEach((az) => {
+    //     const publicSubnet = new aws_ec2.PublicSubnet(
+    //       this.vpc,
+    //       `${props.environmentName}-Public-${az}`,
+    //       {
+    //         vpcId: this.vpc.vpcId,
+    //         availabilityZone: az,
+    //         mapPublicIpOnLaunch: true,
+    //         cidrBlock: "10.0.0.0/26",
+    //       }
+    //     );
+
+    //     const privateSubnet = new aws_ec2.PrivateSubnet(
+    //       this.vpc,
+    //       `${props.environmentName}-Private-${az}`,
+    //       {
+    //         vpcId: this.vpc.vpcId,
+    //         availabilityZone: az,
+    //         mapPublicIpOnLaunch: true,
+    //         cidrBlock: "10.0.0.64/25",
+    //       }
+    //     );
+
+    //     const isolatedSubnet = new aws_ec2.Subnet(
+    //       this.vpc,
+    //       `${props.environmentName}-Isolated-${az}`,
+    //       {
+    //         vpcId: this.vpc.vpcId,
+    //         availabilityZone: az,
+    //         mapPublicIpOnLaunch: true,
+    //         cidrBlock: "10.0.0.64/25",
+    //       }
+    //     );
+    //   });
   }
 }

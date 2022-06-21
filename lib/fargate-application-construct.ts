@@ -4,11 +4,14 @@ import {
   aws_ecs,
   aws_elasticloadbalancingv2,
   aws_route53,
+  aws_route53_targets,
   aws_secretsmanager,
+  RemovalPolicy,
 } from "aws-cdk-lib";
 import { Peer, Port, SubnetType, Vpc } from "aws-cdk-lib/aws-ec2";
 import { Repository } from "aws-cdk-lib/aws-ecr";
-import { DatabaseInstance } from "aws-cdk-lib/aws-rds";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { Credentials, DatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { Construct } from "constructs";
 
 interface ApplicationConstructProps {
@@ -17,23 +20,28 @@ interface ApplicationConstructProps {
   containerRepo: Repository;
   publicHostedZone?: aws_route53.IHostedZone;
   privateHostedZone?: aws_route53.IHostedZone;
+  certificateArn: string;
   name: string;
   domain?: string;
   publicFacing: boolean;
   containerPort: number;
   desiredCount: number;
+  healthCheck?: aws_elasticloadbalancingv2.HealthCheck;
 }
 
 export class FargateApplication extends Construct {
   constructor(scope: Construct, private props: ApplicationConstructProps) {
-    super(scope, `${props.name}"Application"`);
+    super(scope, `${props.name}Application`);
 
-    const ecsCluster = new aws_ecs.Cluster(this, props.name);
+    const ecsCluster = new aws_ecs.Cluster(this, props.name, {
+      vpc: props.vpc,
+    });
+
     const taskDefinition = new aws_ecs.FargateTaskDefinition(
       ecsCluster,
       `${props.name}ApplicationTaskDefinition`,
       {
-        cpu: 0.5,
+        cpu: 512,
         memoryLimitMiB: 2048,
       }
     );
@@ -43,6 +51,9 @@ export class FargateApplication extends Construct {
       `${props.name}DBSecret`,
       this.props.db.secret!.secretFullArn!
     );
+
+    const dbSecret = Credentials.fromSecret(props.db.secret!);
+    const { username, password } = dbSecret;
 
     taskDefinition.addContainer(props.name, {
       image: aws_ecs.ContainerImage.fromEcrRepository(this.props.containerRepo),
@@ -55,9 +66,25 @@ export class FargateApplication extends Construct {
         DB_CREDENTIALS: aws_ecs.Secret.fromSecretsManager(secretFromManager),
       },
       environment: {
-        DB_HOST: this.props.db.dbInstanceEndpointAddress,
-        DB_PORT: this.props.db.dbInstanceEndpointPort,
+        COGNITO_CLIENT_ID: "6s77vcmadi3tms5ukj,h7m07lll", // Remove
+        AUTHORIZER_ARN:
+          "arn:aws:cognito-idp:us-east-1:467725377159:userpool/us-east-1_R7Sxj23De", // Remove
+        COGNITO_POOL_ID: "us-east-1_R7Sxj23De", // Remove
+        DATABASE_URL: `mysql://${username}:${password?.unsafeUnwrap()}@${
+          props.db.dbInstanceEndpointAddress
+        }:${props.db.dbInstanceEndpointPort}/${props.name}?schema=public`,
       },
+      cpu: 512,
+      memoryReservationMiB: 1024,
+      memoryLimitMiB: 2048,
+      logging: aws_ecs.LogDriver.awsLogs({
+        logGroup: new LogGroup(this, `${props.name}LogGroup`, {
+          logGroupName: `${props.name}LogGroup`,
+          removalPolicy: RemovalPolicy.DESTROY,
+          retention: RetentionDays.ONE_YEAR,
+        }),
+        streamPrefix: props.name,
+      }),
     });
 
     const applicationSecurityGroup = new aws_ec2.SecurityGroup(
@@ -86,7 +113,7 @@ export class FargateApplication extends Construct {
         cluster: ecsCluster,
         taskDefinition,
         vpcSubnets: {
-          subnetType: SubnetType.PRIVATE_WITH_NAT,
+          subnets: props.vpc.privateSubnets,
         },
         desiredCount: props.desiredCount,
         assignPublicIp: false,
@@ -113,16 +140,10 @@ export class FargateApplication extends Construct {
       ? this.props.publicHostedZone
       : this.props.privateHostedZone;
 
-    const cerficate = new aws_certificatemanager.Certificate(
+    const cerficate = aws_certificatemanager.Certificate.fromCertificateArn(
       this,
       `${props.name}ListenerCertificate`,
-      {
-        domainName: props.domain!,
-        validation:
-          aws_certificatemanager.CertificateValidation.fromDns(
-            serviceHostedZone
-          ),
-      }
+      props.certificateArn
     );
 
     const listener = loadBalancer.addListener(
@@ -135,8 +156,18 @@ export class FargateApplication extends Construct {
       containerPort: props.containerPort,
       newTargetGroupId: `${props.name}ApplicationTargetGroup`,
       listener: aws_ecs.ListenerConfig.applicationListener(listener, {
-        protocol: aws_elasticloadbalancingv2.ApplicationProtocol.HTTPS,
+        protocol: aws_elasticloadbalancingv2.ApplicationProtocol.HTTP,
+        healthCheck: props.healthCheck,
       }),
+    });
+
+    // Add the dns records for the application and point it to the load balancer
+    const record = new aws_route53.ARecord(this, `${props.name}ARecord`, {
+      zone: serviceHostedZone!,
+      recordName: `${props.domain}.`,
+      target: aws_route53.RecordTarget.fromAlias(
+        new aws_route53_targets.LoadBalancerTarget(loadBalancer)
+      ),
     });
   }
 }
